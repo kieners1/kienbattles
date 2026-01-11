@@ -14,7 +14,16 @@ import {
   limitToLast
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 
-/** ✅ PUT YOUR REAL FIREBASE CONFIG HERE */
+import {
+  getAuth,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile
+} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+
+/** ✅ REPLACE THESE WITH YOUR REAL VALUES */
 const firebaseConfig = {
   apiKey: "AIzaSyDWwOeobP3UY3HVoYsdYwa5rg-rG6sVtqo",
   authDomain: "kienbattles.firebaseapp.com",
@@ -22,60 +31,56 @@ const firebaseConfig = {
   projectId: "kienbattles",
   storageBucket: "kienbattles.firebasestorage.app",
   messagingSenderId: "538328450866",
-  appId: "1:538328450866:web:8b0696a9bdad493b34792b"
+  appId: "G-X8ML39K2HN"
 };
-/** ------------------------------------- */
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
 
-// UI (IDs MUST exist in index.html)
+/* UI */
 const totalFlipsEl = document.getElementById("totalFlips");
 const meLabel = document.getElementById("meLabel");
-const setNameBtn = document.getElementById("setNameBtn");
+const authBtn = document.getElementById("authBtn");
 const createBtn = document.getElementById("createBtn");
 const tabActive = document.getElementById("tabActive");
 const tabHistory = document.getElementById("tabHistory");
 const activeList = document.getElementById("activeList");
 const historyList = document.getElementById("historyList");
 const myBody = document.getElementById("myBody");
+const authBack = document.getElementById("authModalBack");
+const authCloseBtn = document.getElementById("authCloseBtn");
+const authUsername = document.getElementById("authUsername");
+const authPassword = document.getElementById("authPassword");
+const signupBtn = document.getElementById("signupBtn");
+const signinBtn = document.getElementById("signinBtn");
+const authMsg = document.getElementById("authMsg");
 
-// If any is null, stop early with a clear error
-const required = { totalFlipsEl, meLabel, setNameBtn, createBtn, tabActive, tabHistory, activeList, historyList, myBody };
-for (const [k, v] of Object.entries(required)) {
-  if (!v) throw new Error(`Missing element in index.html: ${k}`);
-}
-
-// Persistent client id + name
-const CLIENT_ID_KEY = "coinflip_client_id";
-const NAME_KEY = "coinflip_display_name";
 const MY_FLIP_KEY = "coinflip_my_flip_id";
-
-const clientId = (() => {
-  const existing = localStorage.getItem(CLIENT_ID_KEY);
-  if (existing) return existing;
-  const id = crypto?.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
-  localStorage.setItem(CLIENT_ID_KEY, id);
-  return id;
-})();
-
-let displayName = (localStorage.getItem(NAME_KEY) || "").trim();
+const LAST_CONFETTI_KEY = "coinflip_last_confetti_flip";
 let myFlipId = (localStorage.getItem(MY_FLIP_KEY) || "").trim();
+let lastConfettiFlip = (localStorage.getItem(LAST_CONFETTI_KEY) || "").trim();
 
-// Helpers
+function usernameToEmail(username) {
+  const u = (username || "").trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,16}$/.test(u)) throw new Error("Username must be 3–16 chars: letters/numbers/_");
+  return `${u}@kienbattles.local`;
+}
+function avatarUrlFromName(name) {
+  return `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(name || "player")}`;
+}
 function initials(name) {
   const parts = (name || "??").trim().split(/\s+/).slice(0, 2);
   return parts.map(p => p[0]?.toUpperCase() || "?").join("");
+}
+function fmtStatus(state) {
+  return state === 0 ? "Waiting" : state === 1 ? "Matched" : "Done";
 }
 function randSide() {
   const a = new Uint32Array(1);
   crypto.getRandomValues(a);
   return (a[0] % 2) === 0 ? "Heads" : "Tails";
 }
-function fmtStatus(state) {
-  return state === 0 ? "Waiting" : state === 1 ? "Matched" : "Done";
-}
-
 function setTab(which) {
   const active = which === "active";
   tabActive.classList.toggle("active", active);
@@ -83,120 +88,145 @@ function setTab(which) {
   activeList.classList.toggle("hidden", !active);
   historyList.classList.toggle("hidden", active);
 }
-tabActive.addEventListener("click", () => setTab("active"));
-tabHistory.addEventListener("click", () => setTab("history"));
-
-function ensureName() {
-  if (displayName) return true;
-  const n = prompt("Pick a display name:");
-  if (!n) return false;
-  displayName = n.trim().slice(0, 24);
-  localStorage.setItem(NAME_KEY, displayName);
-  renderMe();
-  return true;
+function openAuth() {
+  authMsg.textContent = "";
+  authPassword.value = "";
+  authBack.classList.add("show");
+  setTimeout(() => authUsername.focus(), 0);
 }
-function renderMe() {
-  meLabel.textContent = displayName ? `Playing as: ${displayName}` : "Not signed in";
+function closeAuth() {
+  authBack.classList.remove("show");
 }
-renderMe();
+async function fireConfettiOnce(flipId) {
+  if (!window.confetti) return;
+  if (!flipId) return;
+  if (lastConfettiFlip === flipId) return;
+  window.confetti({ particleCount: 180, spread: 70, origin: { y: 0.7 } });
+  lastConfettiFlip = flipId;
+  localStorage.setItem(LAST_CONFETTI_KEY, flipId);
+}
 
-// Set name button
-setNameBtn.addEventListener("click", () => {
-  const n = prompt("New display name:", displayName || "");
-  if (!n) return;
-  displayName = n.trim().slice(0, 24);
-  localStorage.setItem(NAME_KEY, displayName);
-  renderMe();
-});
+/* Auth actions (username + password) */
+async function signupUsername(username, password) {
+  const email = usernameToEmail(username);
+  const cred = await createUserWithEmailAndPassword(auth, email, password);
+  await updateProfile(cred.user, { displayName: username });
+  await set(ref(db, `users/${cred.user.uid}`), {
+    name: username,
+    avatar: avatarUrlFromName(username),
+    updatedAt: Date.now()
+  });
+  return cred.user;
+}
+async function signinUsername(username, password) {
+  const email = usernameToEmail(username);
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  const name = cred.user.displayName || username;
+  await set(ref(db, `users/${cred.user.uid}`), {
+    name,
+    avatar: avatarUrlFromName(name),
+    updatedAt: Date.now()
+  });
+  return cred.user;
+}
+async function logout() {
+  await signOut(auth);
+}
 
-// Total flips
+/* Total flips */
 onValue(ref(db, "stats/totalFlips"), (snap) => {
   totalFlipsEl.textContent = String(snap.val() || 0);
 });
 
-// Create coinflip
-createBtn.addEventListener("click", async () => {
-  if (!ensureName()) return;
+/* Create coinflip */
+async function createCoinflip(pick) {
+  const u = auth.currentUser;
+  if (!u) return openAuth();
 
   const flipRef = push(ref(db, "coinflips"));
   const flipId = flipRef.key;
 
-  const flip = {
+  const creatorName = u.displayName || "player";
+  await set(flipRef, {
     createdAt: serverTimestamp(),
-    state: 0, // 0 waiting, 1 matched, 2 done
-    creator: { id: clientId, name: displayName },
-    joiner: null,
-    result: null,
-    flippedAt: null
-  };
+    state: 0,
+    finalized: null,
 
-  await set(flipRef, flip);
+    creatorUid: u.uid,
+    creatorName,
+    creatorAvatar: avatarUrlFromName(creatorName),
+    creatorPick: pick,
+
+    joinerUid: null,
+    joinerName: null,
+    joinerAvatar: null,
+
+    result: null,
+    winnerUid: null,
+    loserUid: null,
+    flippedAt: null
+  });
 
   myFlipId = flipId;
   localStorage.setItem(MY_FLIP_KEY, myFlipId);
-});
+}
 
-// Join coinflip
+/* Join + flip + finalize (only once) */
 async function joinFlip(flipId) {
-  if (!ensureName()) return;
+  const u = auth.currentUser;
+  if (!u) return openAuth();
 
   const flipRef = ref(db, `coinflips/${flipId}`);
+  const joinerName = u.displayName || "player";
 
-  // Atomically claim joiner if empty and still waiting
-  const tx = await runTransaction(flipRef, (cur) => {
+  // claim join slot
+  const joinTx = await runTransaction(flipRef, (cur) => {
     if (!cur) return cur;
-    if (cur.state !== 0) return cur;               // not waiting
-    if (cur.creator?.id === clientId) return cur;  // can't join own
-    if (cur.joiner) return cur;                    // already joined
+    if (cur.state !== 0) return cur;
+    if (cur.creatorUid === u.uid) return cur;
+    if (cur.joinerUid) return cur;
 
-    cur.joiner = { id: clientId, name: displayName };
+    cur.joinerUid = u.uid;
+    cur.joinerName = joinerName;
+    cur.joinerAvatar = avatarUrlFromName(joinerName);
     cur.state = 1;
     return cur;
   });
 
-  if (!tx.committed) return;
+  if (!joinTx.committed) return;
 
   myFlipId = flipId;
   localStorage.setItem(MY_FLIP_KEY, myFlipId);
 
-  // Flip once (transaction on result)
-  const resTx = await runTransaction(ref(db, `coinflips/${flipId}/result`), (cur) => {
-    if (cur) return cur;
-    return randSide();
-  });
+  // set result once
+  await runTransaction(ref(db, `coinflips/${flipId}/result`), (cur) => cur || randSide());
 
-  if (resTx.committed) {
-    await update(ref(db, `coinflips/${flipId}`), {
+  // finalize once
+  const finalizedTx = await runTransaction(ref(db, `coinflips/${flipId}/finalized`), (cur) => cur || true);
+
+  if (finalizedTx.committed) {
+    const snap = await get(flipRef);
+    const f = snap.val();
+    if (!f) return;
+
+    const result = f.result;
+    const creatorWon = (result === f.creatorPick);
+    const winnerUid = creatorWon ? f.creatorUid : f.joinerUid;
+    const loserUid = creatorWon ? f.joinerUid : f.creatorUid;
+
+    await update(flipRef, {
       state: 2,
+      winnerUid,
+      loserUid,
       flippedAt: serverTimestamp()
     });
 
-    // Increment total flips
     await runTransaction(ref(db, "stats/totalFlips"), (n) => (typeof n === "number" ? n + 1 : 1));
-
-    // Add to history
-    await push(ref(db, "history"), {
-      flipId,
-      createdAt: serverTimestamp(),
-      result: resTx.snapshot.val()
-    });
+    await push(ref(db, "history"), { flipId, createdAt: serverTimestamp(), result });
   }
 }
 
-// Render lists
-onValue(query(ref(db, "coinflips"), limitToLast(120)), (snap) => {
-  const all = [];
-  snap.forEach((c) => all.push({ id: c.key, ...c.val() }));
-  all.reverse();
-
-  const active = all.filter(f => f.state !== 2);
-  const done = all.filter(f => f.state === 2);
-
-  renderActive(active);
-  renderHistory(done);
-  renderMy(all.find(f => f.id === myFlipId) || null);
-});
-
+/* Render */
 function renderActive(items) {
   activeList.innerHTML = "";
   if (items.length === 0) {
@@ -204,32 +234,36 @@ function renderActive(items) {
     return;
   }
 
+  const me = auth.currentUser?.uid || null;
+
   for (const f of items) {
-    const creatorName = f.creator?.name || "Unknown";
-    const joinerName = f.joiner?.name || null;
-    const canJoin = f.state === 0 && f.creator?.id !== clientId && !f.joiner;
-    const isMine = f.creator?.id === clientId || f.joiner?.id === clientId;
+    const canJoin = !!me && f.state === 0 && f.creatorUid !== me && !f.joinerUid;
+    const isMine = !!me && (f.creatorUid === me || f.joinerUid === me);
 
     const el = document.createElement("div");
     el.className = "card";
     el.innerHTML = `
       <div class="left">
-        <div class="avatar">${initials(creatorName)}</div>
+        <div class="avatar">${initials(f.creatorName || "U")}</div>
         <div class="meta">
           <div class="metaTop">
-            <div class="name">${creatorName}</div>
+            <div class="name">${f.creatorName || "Unknown"}</div>
             <div class="badge">${fmtStatus(f.state)}</div>
             ${isMine ? `<div class="badge">Mine</div>` : ``}
           </div>
-          <div class="desc">${joinerName ? `vs ${joinerName}` : `Waiting for someone to join…`}</div>
+          <div class="desc">
+            ${f.joinerName ? `vs ${f.joinerName}` : `Pick: ${f.creatorPick} • Waiting for join…`}
+          </div>
         </div>
       </div>
       <div class="right">
-        <div class="pill">🪙 Coinflip</div>
+        <div class="pill">🪙 ${f.creatorPick || "Coinflip"}</div>
         ${
-          canJoin
-            ? `<button class="primary" data-join="${f.id}">Join</button>`
-            : `<button class="ghost" disabled>${f.state === 0 ? "Waiting" : "In progress"}</button>`
+          me
+            ? (canJoin
+                ? `<button class="primary" data-join="${f.id}">Join</button>`
+                : `<button class="ghost" disabled>${f.state === 0 ? "Waiting" : "In progress"}</button>`)
+            : `<button class="primary" data-login="1">Sign in</button>`
         }
       </div>
     `;
@@ -238,6 +272,9 @@ function renderActive(items) {
 
   activeList.querySelectorAll("button[data-join]").forEach((btn) => {
     btn.addEventListener("click", () => joinFlip(btn.getAttribute("data-join")));
+  });
+  activeList.querySelectorAll("button[data-login]").forEach((btn) => {
+    btn.addEventListener("click", openAuth);
   });
 }
 
@@ -249,25 +286,21 @@ function renderHistory(items) {
   }
 
   for (const f of items.slice(0, 80)) {
-    const creatorName = f.creator?.name || "Unknown";
-    const joinerName = f.joiner?.name || "Unknown";
-    const result = f.result || "—";
-
     const el = document.createElement("div");
     el.className = "card";
     el.innerHTML = `
       <div class="left">
-        <div class="avatar">${initials(creatorName)}</div>
+        <div class="avatar">${initials(f.creatorName || "U")}</div>
         <div class="meta">
           <div class="metaTop">
-            <div class="name">${creatorName} vs ${joinerName}</div>
+            <div class="name">${f.creatorName || "Unknown"} vs ${f.joinerName || "Unknown"}</div>
             <div class="badge">Done</div>
           </div>
-          <div class="desc">Result: <b>${result}</b></div>
+          <div class="desc">Result: <b>${f.result || "—"}</b></div>
         </div>
       </div>
       <div class="right">
-        <div class="pill">✅ ${result}</div>
+        <div class="pill">✅ ${f.result || "—"}</div>
         <button class="ghost" disabled>Completed</button>
       </div>
     `;
@@ -281,21 +314,22 @@ function renderMy(f) {
     return;
   }
 
-  const creator = f.creator?.name || "Unknown";
-  const joiner = f.joiner?.name || "";
-  const youAreCreator = f.creator?.id === clientId;
-  const youAreJoiner = f.joiner?.id === clientId;
+  const me = auth.currentUser?.uid || null;
+  let line = f.state === 0 ? `Waiting… (You picked ${f.creatorPick})`
+          : f.state === 1 ? `Matched… flipping…`
+          : `Result: ${f.result || "—"}`;
 
-  let line = "";
-  if (f.state === 0) line = "Waiting for someone to join your coinflip…";
-  if (f.state === 1) line = "Someone joined! Flipping…";
-  if (f.state === 2) line = `Result: ${f.result || "—"}`;
+  let outcome = "";
+  if (f.state === 2 && me) {
+    if (f.winnerUid === me) outcome = "VICTORY 🏆";
+    else if (f.loserUid === me) outcome = "DEFEAT 💀";
+  }
 
   myBody.innerHTML = `
     <div>
-      <div><b>${creator}</b>${joiner ? ` vs <b>${joiner}</b>` : ""}</div>
+      <div><b>${f.creatorName || "Unknown"}</b>${f.joinerName ? ` vs <b>${f.joinerName}</b>` : ""}</div>
       <div class="muted">${line}</div>
-      <div class="muted">${youAreCreator ? "You created this." : youAreJoiner ? "You joined this." : ""}</div>
+      ${outcome ? `<div style="margin-top:6px; font-weight:900;">${outcome}</div>` : ``}
     </div>
     <div class="right">
       <div class="pill">${fmtStatus(f.state)}</div>
@@ -308,7 +342,78 @@ function renderMy(f) {
     localStorage.removeItem(MY_FLIP_KEY);
     myBody.innerHTML = `<div class="muted">Create or join a coinflip to see it here.</div>`;
   });
+
+  if (f.state === 2 && me && f.winnerUid === me) fireConfettiOnce(f.id);
 }
+
+/* Listen to coinflips */
+onValue(query(ref(db, "coinflips"), limitToLast(200)), (snap) => {
+  const all = [];
+  snap.forEach((c) => all.push({ id: c.key, ...c.val() }));
+  all.reverse();
+
+  const active = all.filter(f => f.state !== 2);
+  const done = all.filter(f => f.state === 2);
+
+  renderActive(active);
+  renderHistory(done);
+  renderMy(all.find(f => f.id === myFlipId) || null);
+});
+
+/* Events */
+tabActive.addEventListener("click", () => setTab("active"));
+tabHistory.addEventListener("click", () => setTab("history"));
+
+authBtn.addEventListener("click", () => {
+  if (auth.currentUser) logout();
+  else openAuth();
+});
+
+createBtn.addEventListener("click", () => {
+  if (!auth.currentUser) return openAuth();
+  const pick = document.querySelector('input[name="pick"]:checked')?.value || "Heads";
+  createCoinflip(pick);
+});
+
+authCloseBtn.addEventListener("click", closeAuth);
+authBack.addEventListener("click", (e) => { if (e.target === authBack) closeAuth(); });
+
+signupBtn.addEventListener("click", async () => {
+  authMsg.textContent = "";
+  try {
+    const u = authUsername.value.trim();
+    const p = authPassword.value;
+    await signupUsername(u, p);
+    closeAuth();
+  } catch (err) {
+    authMsg.textContent = err?.message || String(err);
+  }
+});
+
+signinBtn.addEventListener("click", async () => {
+  authMsg.textContent = "";
+  try {
+    const u = authUsername.value.trim();
+    const p = authPassword.value;
+    await signinUsername(u, p);
+    closeAuth();
+  } catch (err) {
+    authMsg.textContent = err?.message || String(err);
+  }
+});
+
+/* Auth state UI */
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    meLabel.textContent = "Not signed in";
+    authBtn.textContent = "Sign in";
+    return;
+  }
+  const name = user.displayName || "player";
+  meLabel.textContent = `Signed in: ${name}`;
+  authBtn.textContent = "Sign out";
+});
+
 
 
 
