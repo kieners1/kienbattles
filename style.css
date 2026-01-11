@@ -52,6 +52,25 @@ body {
 
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
+.pick {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+}
+.pickOpt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  opacity: .95;
+  cursor: pointer;
+}
+.pickOpt input { transform: translateY(1px); }
+
 button {
   border: 0;
   border-radius: 12px;
@@ -59,10 +78,7 @@ button {
   font-size: 14px;
   cursor: pointer;
 }
-button.primary {
-  background: #4c7dff;
-  color: white;
-}
+button.primary { background: #4c7dff; color: white; }
 button.primary:hover { filter: brightness(1.05); }
 
 button.ghost {
@@ -170,5 +186,58 @@ button:disabled { opacity: .6; cursor: not-allowed; }
 }
 
 .footer { margin-top: 18px; font-size: 12px; }
+
+/* Modal */
+.modalBack {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0,0,0,.6);
+  z-index: 9999;
 }
+.modalBack.show { display: flex; }
+
+.modal {
+  width: min(460px, 92vw);
+  background: rgba(18,27,51,.98);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.45);
+}
+.modalTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.modalTitle { font-weight: 900; font-size: 18px; }
+.modal input {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+  color: #e8eefc;
+  outline: none;
+}
+.modalActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.modalMsg {
+  margin-top: 10px;
+  font-size: 12px;
+  min-height: 18px;
+  opacity: .9;
+}
+
 
