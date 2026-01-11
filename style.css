@@ -63,6 +63,105 @@ button.primary {
   background: #4c7dff;
   color: white;
 }
-button.primary:hover { filter: brightness(1.
+button.primary:hover { filter: brightness(1.05); }
+
+button.ghost {
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.14);
+  color: #e8eefc;
+}
+button.ghost:hover { filter: brightness(1.08); }
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 18px;
+}
+.tab {
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  color: #e8eefc;
+  padding: 10px 12px;
+  border-radius: 999px;
+  opacity: .8;
+}
+.tab.active {
+  opacity: 1;
+  border-color: rgba(76,125,255,.6);
+  box-shadow: 0 0 0 4px rgba(76,125,255,.12);
+}
+
+.panel {
+  background: rgba(18,27,51,.75);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.panelTitle { font-weight: 800; margin-bottom: 8px; }
+.panelBody { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.muted { opacity: .75; }
+
+.list { display: grid; gap: 12px; }
+.hidden { display: none; }
+
+.card {
+  background: rgba(18,27,51,.75);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.avatar {
+  width: 44px; height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+}
+
+.meta { min-width: 0; }
+.metaTop {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.name { font-weight: 800; }
+.badge {
+  font-size: 12px;
+  opacity: .85;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05);
+}
+.desc { font-size: 13px; opacity: .78; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.right { display: flex; align-items: center; gap: 10px; }
+.pill {
+  font-size: 12px;
+  opacity: .9;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05);
+}
+
+.footer { margin-top: 18px; font-size: 12px; }
+
 
 
