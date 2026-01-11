@@ -3,10 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Coin Flip Multiplayer</title>
+    <title>Coinflip Lobby</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- Top-left HUD -->
     <div class="hud">
       <div class="hudItem">
         <span class="hudLabel">Total flips</span>
@@ -14,31 +15,46 @@
       </div>
     </div>
 
-    <main class="card">
-      <h1>Coin Flip</h1>
-      <p class="muted" id="status">Press ⏎ to enter the queue.</p>
+    <main class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="dot"></div>
+          <div>
+            <div class="title">Coinflip</div>
+            <div class="subtitle" id="meLabel">Not signed in</div>
+          </div>
+        </div>
 
-      <div class="coinRow">
-        <div class="coin" id="coin" aria-live="polite">🪙</div>
-        <button id="enterBtn" class="enterBtn" title="Enter / Ready">⏎</button>
+        <div class="actions">
+          <button class="ghost" id="setNameBtn">Set name</button>
+          <button class="primary" id="createBtn">+ Create Coinflip</button>
+        </div>
+      </header>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="active" id="tabActive">Active Coinflips</button>
+        <button class="tab" data-tab="history" id="tabHistory">Coinflip History</button>
       </div>
 
-      <p class="result" id="result">—</p>
+      <section class="panel" id="myPanel">
+        <div class="panelTitle">My current coinflip</div>
+        <div class="panelBody" id="myBody">
+          <div class="muted">Create or join a coinflip to see it here.</div>
+        </div>
+      </section>
 
-      <details class="box">
-        <summary>What’s happening?</summary>
-        <ul>
-          <li>Click ⏎ to join matchmaking.</li>
-          <li>When another player also clicks ⏎, you get paired.</li>
-          <li>When both are in the match, it flips once for both.</li>
-        </ul>
-      </details>
+      <section class="list" id="activeList"></section>
+      <section class="list hidden" id="historyList"></section>
 
-      <p class="tiny muted">Tip: open a second window (incognito) to test.</p>
+      <footer class="footer muted">
+        Tip: open an incognito window to test multiplayer.
+      </footer>
     </main>
 
     <script type="module" src="script.js"></script>
   </body>
 </html>
+
+
 
 
