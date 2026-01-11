@@ -3,28 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Coin Flip</title>
+    <title>Multiplayer Coin Flip</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <main class="card">
-      <h1>Coin Flip</h1>
+      <h1>Multiplayer Coin Flip</h1>
 
-      <div class="coin" id="coin" aria-live="polite">🪙</div>
-
-      <p class="result" id="result">Press flip to start.</p>
-
-      <button id="flipBtn">Flip</button>
-
-      <div class="row">
-        <div>Heads: <span id="heads">0</span></div>
-        <div>Tails: <span id="tails">0</span></div>
+      <div class="roomBox">
+        <input id="roomInput" placeholder="Room code (e.g. friends123)" maxlength="32" />
+        <button id="joinBtn">Join room</button>
       </div>
 
-      <button class="secondary" id="resetBtn">Reset</button>
+      <p class="muted" id="roomLabel">Not in a room yet.</p>
+      <p class="status" id="status">Enter a room code to start.</p>
+
+      <div class="coin" id="coin" aria-live="polite">🪙</div>
+      <p class="result" id="result">—</p>
+
+      <details class="historyBox">
+        <summary>History (last 10)</summary>
+        <ol id="history"></ol>
+      </details>
+
+      <p class="tiny muted">
+        Tip: Share the link after you join (it includes the room).
+      </p>
     </main>
 
-    <script src="script.js"></script>
+    <!-- IMPORTANT: script is a module because we use Firebase imports -->
+    <script type="module" src="script.js"></script>
   </body>
 </html>
 
