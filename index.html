@@ -3,35 +3,40 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Multiplayer Coin Flip</title>
+    <title>Coin Flip Multiplayer</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main class="card">
-      <h1>Multiplayer Coin Flip</h1>
+    <div class="hud">
+      <div class="hudItem">
+        <span class="hudLabel">Total flips</span>
+        <span class="hudValue" id="totalFlips">0</span>
+      </div>
+    </div>
 
-      <div class="roomBox">
-        <input id="roomInput" placeholder="Room code (e.g. friends123)" maxlength="32" />
-        <button id="joinBtn">Join room</button>
+    <main class="card">
+      <h1>Coin Flip</h1>
+      <p class="muted" id="status">Press ⏎ to enter the queue.</p>
+
+      <div class="coinRow">
+        <div class="coin" id="coin" aria-live="polite">🪙</div>
+        <button id="enterBtn" class="enterBtn" title="Enter / Ready">⏎</button>
       </div>
 
-      <p class="muted" id="roomLabel">Not in a room yet.</p>
-      <p class="status" id="status">Enter a room code to start.</p>
-
-      <div class="coin" id="coin" aria-live="polite">🪙</div>
       <p class="result" id="result">—</p>
 
-      <details class="historyBox">
-        <summary>History (last 10)</summary>
-        <ol id="history"></ol>
+      <details class="box">
+        <summary>What’s happening?</summary>
+        <ul>
+          <li>Click ⏎ to join matchmaking.</li>
+          <li>When another player also clicks ⏎, you get paired.</li>
+          <li>When both are in the match, it flips once for both.</li>
+        </ul>
       </details>
 
-      <p class="tiny muted">
-        Tip: Share the link after you join (it includes the room).
-      </p>
+      <p class="tiny muted">Tip: open a second window (incognito) to test.</p>
     </main>
 
-    <!-- IMPORTANT: script is a module because we use Firebase imports -->
     <script type="module" src="script.js"></script>
   </body>
 </html>
