@@ -1,6 +1,3 @@
-// Multiplayer coin flip using Firebase Realtime Database (free tier).
-// Works on GitHub Pages because we use Firebase CDN module imports.
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
 import {
   getDatabase,
@@ -8,23 +5,22 @@ import {
   set,
   get,
   onValue,
+  update,
+  remove,
+  runTransaction,
   onDisconnect,
   serverTimestamp,
-  runTransaction,
-  push,
-  query,
-  limitToLast
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 
-/** 1) PASTE YOUR FIREBASE CONFIG HERE (from Firebase console) */
+/** ✅ PASTE YOUR CONFIG HERE (and include databaseURL) */
 const firebaseConfig = {
-  // apiKey: "...",
-  // authDomain: "...",
-  // databaseURL: "...",
-  // projectId: "...",
-  // storageBucket: "...",
-  // messagingSenderId: "...",
-  // appId: "..."
+  apiKey: "PASTE_YOURS",
+  authDomain: "PASTE_YOURS",
+  databaseURL: "https://kienbattles-default-rtdb.firebaseio.com",
+  projectId: "kienbattles",
+  storageBucket: "PASTE_YOURS",
+  messagingSenderId: "PASTE_YOURS",
+  appId: "PASTE_YOURS"
 };
 /** ---------------------------------------------- */
 
@@ -32,15 +28,13 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // UI
-const roomInput = document.getElementById("roomInput");
-const joinBtn = document.getElementById("joinBtn");
-const roomLabel = document.getElementById("roomLabel");
+const enterBtn = document.getElementById("enterBtn");
 const statusEl = document.getElementById("status");
 const resultEl = document.getElementById("result");
 const coinEl = document.getElementById("coin");
-const historyEl = document.getElementById("history");
+const totalFlipsEl = document.getElementById("totalFlips");
 
-// Persistent client id (so refresh doesn’t create “new person”)
+// Stable client id
 const CLIENT_ID_KEY = "coinflip_client_id";
 const clientId = (() => {
   const existing = localStorage.getItem(CLIENT_ID_KEY);
@@ -50,182 +44,175 @@ const clientId = (() => {
   return id;
 })();
 
-let currentRoom = null;
-let joined = false;
+const meRef = ref(db, `clients/${clientId}`);
+const myMatchRef = ref(db, `clients/${clientId}/matchId`);
+const waitingRef = ref(db, `lobby/waiting/${clientId}`);
+const statsTotalRef = ref(db, `stats/totalFlips`);
+const lobbyLockRef = ref(db, `lobby/lock`);
 
-// Random 50/50 (good randomness)
-function randSide() {
-  const a = new Uint32Array(1);
-  crypto.getRandomValues(a);
-  return (a[0] % 2) === 0 ? "Heads" : "Tails";
-}
+let currentMatchId = null;
+let entered = false;
 
+// ---------- Helpers ----------
 function animateFlip() {
   coinEl.classList.remove("flip");
   void coinEl.offsetWidth;
   coinEl.classList.add("flip");
 }
 
-// Clean room code
-function normalizeRoom(s) {
-  return (s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "")
-    .slice(0, 32);
+function randSide() {
+  const a = new Uint32Array(1);
+  crypto.getRandomValues(a);
+  return (a[0] % 2) === 0 ? "Heads" : "Tails";
 }
 
-// --- Joining / Presence ---
-async function joinRoom(room) {
-  const roomId = normalizeRoom(room);
-  if (!roomId) {
-    alert("Please enter a room code (letters/numbers only).");
+function nowMs() {
+  return Date.now();
+}
+
+function setStatus(s) {
+  statusEl.textContent = s;
+}
+
+// ---------- Presence / cleanup ----------
+async function initPresence() {
+  await set(meRef, { onlineAt: serverTimestamp() });
+  onDisconnect(meRef).remove();
+  onDisconnect(waitingRef).remove();
+
+  // If you close the tab while in a match, we leave match data as-is
+  // (simple + avoids deleting someone else’s game).
+}
+
+initPresence();
+
+// ---------- Global total flips ----------
+onValue(statsTotalRef, (snap) => {
+  totalFlipsEl.textContent = String(snap.val() || 0);
+});
+
+// ---------- Matchmaking ----------
+async function tryMatchmake() {
+  // Acquire a simple lock so two people don’t create two matches at once
+  const lock = await runTransaction(lobbyLockRef, (cur) => {
+    if (cur === null) return { holder: clientId, at: nowMs() };
+    // If lock is old, steal it (basic safety)
+    if (cur?.at && nowMs() - cur.at > 8000) return { holder: clientId, at: nowMs() };
+    return cur;
+  });
+
+  if (!lock.committed || lock.snapshot.val()?.holder !== clientId) {
+    // Someone else is matching right now; we’ll just wait.
     return;
   }
 
-  // Put room in the URL so you can share the link
-  const url = new URL(window.location.href);
-  url.hash = roomId;
-  history.replaceState(null, "", url.toString());
+  try {
+    const waitingSnap = await get(ref(db, "lobby/waiting"));
+    const waiting = waitingSnap.val() || {};
+    const ids = Object.keys(waiting);
 
-  currentRoom = roomId;
-  joined = true;
-  joinBtn.disabled = true;
-  roomInput.disabled = true;
-  roomLabel.textContent = `Room: ${roomId}`;
+    // Need at least 2 waiting
+    if (ids.length < 2) return;
 
-  const roomBase = `rooms/${roomId}`;
-  const meRef = ref(db, `${roomBase}/players/${clientId}`);
-  const countRef = ref(db, `${roomBase}/playerCount`);
+    // Sort by join time (oldest first)
+    ids.sort((a, b) => (waiting[a]?.ts || 0) - (waiting[b]?.ts || 0));
 
-  // Mark me present
-  await set(meRef, { joinedAt: serverTimestamp() });
+    // Pick first two
+    const p1 = ids[0];
+    const p2 = ids[1];
 
-  // Increment playerCount (atomic)
-  await runTransaction(countRef, (n) => (typeof n === "number" ? n + 1 : 1));
+    const matchId = `m_${nowMs()}_${Math.random().toString(16).slice(2)}`;
 
-  // On disconnect: remove me + decrement
-  onDisconnect(meRef).remove();
-  onDisconnect(countRef).set(null); // fallback (we also decrement below)
+    const updates = {};
+    updates[`matches/${matchId}`] = {
+      createdAt: serverTimestamp(),
+      players: { [p1]: true, [p2]: true },
+      ready: { [p1]: true, [p2]: true }, // both already “entered”
+      flip: { status: "waiting" }
+    };
+    updates[`clients/${p1}/matchId`] = matchId;
+    updates[`clients/${p2}/matchId`] = matchId;
+    updates[`lobby/waiting/${p1}`] = null;
+    updates[`lobby/waiting/${p2}`] = null;
 
-  // Better decrement on disconnect using a second transaction:
-  // (This won't run if the tab crashes before setup, but usually works well.)
-  onDisconnect(ref(db, `${roomBase}/disconnect/${clientId}`)).set({ at: serverTimestamp() });
-
-  // Listen for disconnect markers and reconcile count (simple + reliable)
-  // If you don’t want this extra logic, you can remove it — but it helps keep counts right.
-  const disconnectRef = ref(db, `${roomBase}/disconnect`);
-  onValue(disconnectRef, async (snap) => {
-    const val = snap.val();
-    if (!val) return;
-
-    // If someone disconnected, rebuild playerCount from players list
-    const playersSnap = await get(ref(db, `${roomBase}/players`));
-    const players = playersSnap.val() || {};
-    const realCount = Object.keys(players).length;
-    await set(countRef, realCount);
-
-    // Clear disconnect markers
-    await set(disconnectRef, null);
-  });
-
-  // Keep playerCount accurate (when players list changes)
-  onValue(ref(db, `${roomBase}/players`), async (snap) => {
-    const players = snap.val() || {};
-    const realCount = Object.keys(players).length;
-    await set(countRef, realCount);
-  });
-
-  // Main listeners: count + flip result + history
-  listenRoom(roomId);
+    await update(ref(db), updates);
+  } finally {
+    // Release lock
+    await set(lobbyLockRef, null);
+  }
 }
 
-function listenRoom(roomId) {
-  const roomBase = `rooms/${roomId}`;
-  const countRef = ref(db, `${roomBase}/playerCount`);
-  const flipRef = ref(db, `${roomBase}/flip`);
+async function enterQueue() {
+  if (entered) return;
+  entered = true;
+  enterBtn.disabled = true;
+  resultEl.textContent = "—";
+  setStatus("Entered. Waiting for another player to press ⏎…");
 
-  // Show count + trigger flip when exactly 2 players are present
-  onValue(countRef, async (snap) => {
-    const count = snap.val() || 0;
+  // Put me in waiting list
+  await set(waitingRef, { ts: nowMs(), at: serverTimestamp() });
 
-    if (count < 2) {
-      statusEl.textContent = `Waiting for 2 players… (${count}/2)`;
-      resultEl.textContent = "—";
-      // Reset flip state so the next time 2 join, it flips again
-      await set(flipRef, { status: "waiting", updatedAt: serverTimestamp() });
+  // Try to match immediately
+  await tryMatchmake();
+
+  // Also, if anyone else enters later, they might match us; we’ll detect via myMatchRef listener.
+}
+
+// ---------- Match handling ----------
+function listenToMyMatch() {
+  onValue(myMatchRef, async (snap) => {
+    const matchId = snap.val();
+    if (!matchId) {
+      currentMatchId = null;
+      if (entered) setStatus("Entered. Waiting for another player to press ⏎…");
       return;
     }
 
-    if (count === 2) {
-      statusEl.textContent = "2 players connected! Flipping…";
+    currentMatchId = matchId;
+    setStatus("Matched! Flipping…");
 
-      // Attempt to flip ONCE (transaction prevents double flip)
-      const side = randSide();
-      animateFlip();
+    const matchFlipRef = ref(db, `matches/${matchId}/flip`);
 
-      const tx = await runTransaction(flipRef, (cur) => {
-        // If we already flipped and status is done, do nothing
-        if (cur && cur.status === "done") return cur;
+    // Flip once (shared)
+    const side = randSide();
+    animateFlip();
 
-        // Otherwise set result
-        return {
-          status: "done",
-          result: side,
-          updatedAt: serverTimestamp()
-        };
-      });
+    const tx = await runTransaction(matchFlipRef, (cur) => {
+      if (cur && cur.status === "done") return cur;
+      return { status: "done", result: side, at: serverTimestamp() };
+    });
 
-      // If THIS client committed the flip, write history
-      if (tx.committed) {
-        await push(ref(db, `${roomBase}/history`), {
-          result: tx.snapshot.val()?.result || side,
-          at: serverTimestamp()
-        });
+    // If THIS client committed the flip, increment global total flips
+    if (tx.committed) {
+      await runTransaction(statsTotalRef, (n) => (typeof n === "number" ? n + 1 : 1));
+    }
+
+    // Listen for the flip result (both players see same)
+    onValue(matchFlipRef, (s) => {
+      const v = s.val();
+      if (v?.status === "done" && v.result) {
+        resultEl.textContent = `Result: ${v.result}`;
+        setStatus("Done! Press ⏎ again for a new opponent.");
+        enterBtn.disabled = false;
+        entered = false;
+
+        // Clear my matchId so next Enter starts a new match
+        // (Both players will do this; it’s fine.)
+        setTimeout(() => {
+          set(myMatchRef, null);
+        }, 400);
       }
-      return;
-    }
-
-    // More than 2 players (optional behavior)
-    statusEl.textContent = `More than 2 players in room (${count}). This mode is “2 players only”.`;
-  });
-
-  // Everyone listens to flip result and shows the same output
-  onValue(flipRef, (snap) => {
-    const data = snap.val();
-    if (!data) return;
-
-    if (data.status === "done" && data.result) {
-      resultEl.textContent = `Result: ${data.result}`;
-      statusEl.textContent = "Flipped! (Shared result)";
-    }
-  });
-
-  // History (last 10)
-  const historyQ = query(ref(db, `${roomBase}/history`), limitToLast(10));
-  onValue(historyQ, (snap) => {
-    const items = [];
-    snap.forEach((child) => items.push(child.val()));
-    items.reverse();
-
-    historyEl.innerHTML = "";
-    for (const it of items) {
-      const li = document.createElement("li");
-      li.textContent = it?.result ? String(it.result) : "—";
-      historyEl.appendChild(li);
-    }
+    }, { onlyOnce: false });
   });
 }
 
-// Join button
-joinBtn.addEventListener("click", () => joinRoom(roomInput.value));
+listenToMyMatch();
 
-// Auto-join if URL has a room code in the hash
-const initialRoom = normalizeRoom((window.location.hash || "").replace("#", ""));
-if (initialRoom) {
-  roomInput.value = initialRoom;
-  joinRoom(initialRoom);
-} else {
-  statusEl.textContent = "Enter a room code to start.";
-}
+// ---------- Button + keyboard ----------
+enterBtn.addEventListener("click", enterQueue);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") enterQueue();
+});
+
 
