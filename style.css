@@ -1,218 +1,68 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import {
-  getDatabase,
-  ref,
-  set,
-  get,
-  onValue,
-  update,
-  remove,
-  runTransaction,
-  onDisconnect,
-  serverTimestamp,
-} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+:root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+* { box-sizing: border-box; }
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDWwQeobP3UY3HYoSdyWa5rg-rG6sVtqo",
-  authDomain: "kienbattles.firebaseapp.com",
-  databaseURL: "https://kienbattles-default-rtdb.firebaseio.com",
-  projectId: "kienbattles",
-  storageBucket: "kienbattles.firebasestorage.app",
-  messagingSenderId: "538328450866",
-  appId: "1:538328450866:web:648fce229ffcb8f34792b"
-};
-
-};
-/** ---------------------------------------------- */
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-// UI
-const enterBtn = document.getElementById("enterBtn");
-const statusEl = document.getElementById("status");
-const resultEl = document.getElementById("result");
-const coinEl = document.getElementById("coin");
-const totalFlipsEl = document.getElementById("totalFlips");
-
-// Stable client id
-const CLIENT_ID_KEY = "coinflip_client_id";
-const clientId = (() => {
-  const existing = localStorage.getItem(CLIENT_ID_KEY);
-  if (existing) return existing;
-  const id = crypto?.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
-  localStorage.setItem(CLIENT_ID_KEY, id);
-  return id;
-})();
-
-const meRef = ref(db, `clients/${clientId}`);
-const myMatchRef = ref(db, `clients/${clientId}/matchId`);
-const waitingRef = ref(db, `lobby/waiting/${clientId}`);
-const statsTotalRef = ref(db, `stats/totalFlips`);
-const lobbyLockRef = ref(db, `lobby/lock`);
-
-let currentMatchId = null;
-let entered = false;
-
-// ---------- Helpers ----------
-function animateFlip() {
-  coinEl.classList.remove("flip");
-  void coinEl.offsetWidth;
-  coinEl.classList.add("flip");
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 50% 0%, rgba(76,125,255,.18), transparent 55%),
+              #0b1220;
+  color: #e8eefc;
 }
 
-function randSide() {
-  const a = new Uint32Array(1);
-  crypto.getRandomValues(a);
-  return (a[0] % 2) === 0 ? "Heads" : "Tails";
+.hud {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 10;
+}
+.hudItem {
+  background: rgba(18,27,51,.92);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  min-width: 140px;
+}
+.hudLabel { display: block; font-size: 12px; opacity: .75; }
+.hudValue { font-size: 20px; font-weight: 800; }
+
+.app {
+  width: min(1100px, 94vw);
+  margin: 0 auto;
+  padding: 80px 0 60px;
 }
 
-function nowMs() {
-  return Date.now();
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
-function setStatus(s) {
-  statusEl.textContent = s;
+.brand { display: flex; align-items: center; gap: 12px; }
+.dot {
+  width: 14px; height: 14px;
+  border-radius: 999px;
+  background: #4c7dff;
+  box-shadow: 0 0 0 6px rgba(76,125,255,.15);
 }
+.title { font-size: 20px; font-weight: 800; }
+.subtitle { font-size: 12px; opacity: .75; margin-top: 2px; }
 
-// ---------- Presence / cleanup ----------
-async function initPresence() {
-  await set(meRef, { onlineAt: serverTimestamp() });
-  onDisconnect(meRef).remove();
-  onDisconnect(waitingRef).remove();
+.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
-  // If you close the tab while in a match, we leave match data as-is
-  // (simple + avoids deleting someone else’s game).
+button {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  cursor: pointer;
 }
-
-initPresence();
-
-// ---------- Global total flips ----------
-onValue(statsTotalRef, (snap) => {
-  totalFlipsEl.textContent = String(snap.val() || 0);
-});
-
-// ---------- Matchmaking ----------
-async function tryMatchmake() {
-  // Acquire a simple lock so two people don’t create two matches at once
-  const lock = await runTransaction(lobbyLockRef, (cur) => {
-    if (cur === null) return { holder: clientId, at: nowMs() };
-    // If lock is old, steal it (basic safety)
-    if (cur?.at && nowMs() - cur.at > 8000) return { holder: clientId, at: nowMs() };
-    return cur;
-  });
-
-  if (!lock.committed || lock.snapshot.val()?.holder !== clientId) {
-    // Someone else is matching right now; we’ll just wait.
-    return;
-  }
-
-  try {
-    const waitingSnap = await get(ref(db, "lobby/waiting"));
-    const waiting = waitingSnap.val() || {};
-    const ids = Object.keys(waiting);
-
-    // Need at least 2 waiting
-    if (ids.length < 2) return;
-
-    // Sort by join time (oldest first)
-    ids.sort((a, b) => (waiting[a]?.ts || 0) - (waiting[b]?.ts || 0));
-
-    // Pick first two
-    const p1 = ids[0];
-    const p2 = ids[1];
-
-    const matchId = `m_${nowMs()}_${Math.random().toString(16).slice(2)}`;
-
-    const updates = {};
-    updates[`matches/${matchId}`] = {
-      createdAt: serverTimestamp(),
-      players: { [p1]: true, [p2]: true },
-      ready: { [p1]: true, [p2]: true }, // both already “entered”
-      flip: { status: "waiting" }
-    };
-    updates[`clients/${p1}/matchId`] = matchId;
-    updates[`clients/${p2}/matchId`] = matchId;
-    updates[`lobby/waiting/${p1}`] = null;
-    updates[`lobby/waiting/${p2}`] = null;
-
-    await update(ref(db), updates);
-  } finally {
-    // Release lock
-    await set(lobbyLockRef, null);
-  }
+button.primary {
+  background: #4c7dff;
+  color: white;
 }
+button.primary:hover { filter: brightness(1.
 
-async function enterQueue() {
-  if (entered) return;
-  entered = true;
-  enterBtn.disabled = true;
-  resultEl.textContent = "—";
-  setStatus("Entered. Waiting for another player to press ⏎…");
-
-  // Put me in waiting list
-  await set(waitingRef, { ts: nowMs(), at: serverTimestamp() });
-
-  // Try to match immediately
-  await tryMatchmake();
-
-  // Also, if anyone else enters later, they might match us; we’ll detect via myMatchRef listener.
-}
-
-// ---------- Match handling ----------
-function listenToMyMatch() {
-  onValue(myMatchRef, async (snap) => {
-    const matchId = snap.val();
-    if (!matchId) {
-      currentMatchId = null;
-      if (entered) setStatus("Entered. Waiting for another player to press ⏎…");
-      return;
-    }
-
-    currentMatchId = matchId;
-    setStatus("Matched! Flipping…");
-
-    const matchFlipRef = ref(db, `matches/${matchId}/flip`);
-
-    // Flip once (shared)
-    const side = randSide();
-    animateFlip();
-
-    const tx = await runTransaction(matchFlipRef, (cur) => {
-      if (cur && cur.status === "done") return cur;
-      return { status: "done", result: side, at: serverTimestamp() };
-    });
-
-    // If THIS client committed the flip, increment global total flips
-    if (tx.committed) {
-      await runTransaction(statsTotalRef, (n) => (typeof n === "number" ? n + 1 : 1));
-    }
-
-    // Listen for the flip result (both players see same)
-    onValue(matchFlipRef, (s) => {
-      const v = s.val();
-      if (v?.status === "done" && v.result) {
-        resultEl.textContent = `Result: ${v.result}`;
-        setStatus("Done! Press ⏎ again for a new opponent.");
-        enterBtn.disabled = false;
-        entered = false;
-
-        // Clear my matchId so next Enter starts a new match
-        // (Both players will do this; it’s fine.)
-        setTimeout(() => {
-          set(myMatchRef, null);
-        }, 400);
-      }
-    }, { onlyOnce: false });
-  });
-}
-
-listenToMyMatch();
-
-// ---------- Button + keyboard ----------
-enterBtn.addEventListener("click", enterQueue);
-
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") enterQueue();
-});
 
