@@ -26,7 +26,19 @@
         </div>
 
         <div class="actions">
-          <button class="ghost" id="setNameBtn">Set name</button>
+          <button class="ghost" id="authBtn">Sign in</button>
+
+          <div class="pick">
+            <label class="pickOpt">
+              <input type="radio" name="pick" value="Heads" checked />
+              <span>Heads</span>
+            </label>
+            <label class="pickOpt">
+              <input type="radio" name="pick" value="Tails" />
+              <span>Tails</span>
+            </label>
+          </div>
+
           <button class="primary" id="createBtn">+ Create Coinflip</button>
         </div>
       </header>
@@ -46,12 +58,32 @@
       <section class="list" id="activeList"></section>
       <section class="list hidden" id="historyList"></section>
 
-      <footer class="footer muted">
-        Tip: open an incognito window to test multiplayer.
-      </footer>
+      <footer class="footer muted">Tip: open an incognito window to test multiplayer.</footer>
     </main>
 
-    <!-- IMPORTANT: must be type="module" -->
+    <!-- Auth modal -->
+    <div class="modalBack" id="authModalBack">
+      <div class="modal">
+        <div class="modalTop">
+          <div class="modalTitle">Sign in / Sign up</div>
+          <button class="ghost" id="authCloseBtn">✕</button>
+        </div>
+
+        <input id="authUsername" placeholder="username (3–16 letters/numbers/_)" autocomplete="username" />
+        <input id="authPassword" placeholder="password" type="password" autocomplete="current-password" />
+
+        <div class="modalActions">
+          <button class="primary" id="signupBtn">Sign up</button>
+          <button class="ghost" id="signinBtn">Sign in</button>
+        </div>
+
+        <div class="modalMsg" id="authMsg"></div>
+      </div>
+    </div>
+
+    <!-- Confetti library (no installs) -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
     <script type="module" src="script.js"></script>
   </body>
 </html>
