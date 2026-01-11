@@ -1,3 +1,4 @@
+alert("script.js loaded ✅");
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
 import {
   getDatabase,
@@ -308,5 +309,6 @@ function renderMy(f) {
     myBody.innerHTML = `<div class="muted">Create or join a coinflip to see it here.</div>`;
   });
 }
+
 
 
