@@ -32,11 +32,11 @@
       </header>
 
       <div class="tabs">
-        <button class="tab active" data-tab="active" id="tabActive">Active Coinflips</button>
-        <button class="tab" data-tab="history" id="tabHistory">Coinflip History</button>
+        <button class="tab active" id="tabActive">Active Coinflips</button>
+        <button class="tab" id="tabHistory">Coinflip History</button>
       </div>
 
-      <section class="panel" id="myPanel">
+      <section class="panel">
         <div class="panelTitle">My current coinflip</div>
         <div class="panelBody" id="myBody">
           <div class="muted">Create or join a coinflip to see it here.</div>
@@ -51,6 +51,7 @@
       </footer>
     </main>
 
+    <!-- IMPORTANT: must be type="module" -->
     <script type="module" src="script.js"></script>
   </body>
 </html>
